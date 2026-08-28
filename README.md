@@ -11,7 +11,7 @@ changed is everything around the language — the grid is 32×16 instead of
 unbounded, there is no keyboard, and `:` plays an *instrument* on the DMG's
 own sound chip instead of sending MIDI.
 
-![the grid](docs/shot-grid.png) ![port masks](docs/shot-ports.png)
+![the grid](docs/shot-grid.png)
 
 > **Status.** Runs on a real DMG. The VM is covered by host-side tests and the
 > ROM by PyBoy.
@@ -67,8 +67,6 @@ done anything, it is still the eraser. And because the clipboard is a grid
 idea, SELECT+A and SELECT+B mean something else entirely on the instrument
 page, which is where saving lives.
 
-![a selection](docs/shot-select.png)
-
 Dragging with B marks a rectangle, drawn inverted, with its size in the status
 bar. Moving the cursor without B lets it go. The clipboard holds up to 16×16
 cells — that is what the Game Boy's 8K of work RAM has left once the grid, the
@@ -106,7 +104,7 @@ and vice versa.
 
 ## Instruments
 
-![a pulse instrument](docs/shot-instr.png) ![a noise instrument](docs/shot-noise.png)
+![a pulse instrument](docs/shot-instr.png)
 
 SELECT+START opens the instrument page; opening it while the cursor sits on a
 value glyph jumps straight to that slot. D-pad moves, left/right edits, `A`
