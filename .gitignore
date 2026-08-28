@@ -1,0 +1,10 @@
+# Build output: the ROM, object files, listings, maps and the SRAM image.
+build/
+
+# The virtualenv for the test tooling; recreate it from requirements.txt.
+.venv/
+
+__pycache__/
+*.pyc
+
+.DS_Store

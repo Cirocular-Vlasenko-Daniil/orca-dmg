@@ -1,0 +1,4 @@
+# Only the tests and the tooling need these.  Building the ROM needs nothing
+# but GBDK-2020: the generated sources (src/font.c, src/notes.c) are committed.
+pyboy==2.7.0
+pillow
