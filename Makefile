@@ -11,10 +11,12 @@ ifeq ($(OS),Windows_NT)
 PY     ?= .venv/Scripts/python.exe
 PYGEN  ?= python
 RMBUILD = if exist build rmdir /S /Q build
+EXE     = .exe
 else
 PY     ?= .venv/bin/python
 PYGEN  ?= python3
 RMBUILD = rm -rf build
+EXE     =
 endif
 HOSTCC ?= cc
 
@@ -43,13 +45,15 @@ build/%.o: src/%.c $(HDRS) | build
 # Two layers: the VM core is plain C and is proven on the host, where a
 # failure is readable; the ROM itself is then driven in an emulator and
 # checked against what the PPU and APU actually hold.
-test: build/host_test build/$(NAME).gb
-	./build/host_test
+# No leading ./ on the host test: a path with a slash runs fine under sh, and
+# cmd.exe does not understand ./ at all.
+test: build/host_test$(EXE) build/$(NAME).gb
+	build/host_test$(EXE)
 	$(PY) tools/emu_test.py
 	$(PY) tools/vblank_test.py
 	$(PY) tools/header_test.py
 
-build/host_test: test/host_test.c src/orca.c $(HDRS) | build
+build/host_test$(EXE): test/host_test.c src/orca.c $(HDRS) | build
 	$(HOSTCC) -O1 -Wall -Wextra -std=c99 -o $@ test/host_test.c src/orca.c
 
 shots: build/$(NAME).gb
