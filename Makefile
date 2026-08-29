@@ -1,7 +1,22 @@
 GBDK   ?= $(HOME)/toolchains/gbdk
 LCC     = $(GBDK)/bin/lcc
-PY     ?= .venv/bin/python
 NAME    = orca-dmg
+
+# Windows has no unix shell: make hands recipes to cmd.exe, which has no rm
+# and whose mkdir reads "-p" as a directory name to create.  The ROM build
+# needs exactly two shell commands, so they are switched here rather than
+# making everyone install a unix environment.  Override PY/PYGEN/HOSTCC if
+# your interpreters or compiler live somewhere else.
+ifeq ($(OS),Windows_NT)
+PY     ?= .venv/Scripts/python.exe
+PYGEN  ?= python
+RMBUILD = if exist build rmdir /S /Q build
+else
+PY     ?= .venv/bin/python
+PYGEN  ?= python3
+RMBUILD = rm -rf build
+endif
+HOSTCC ?= cc
 
 SRC  = src/main.c src/orca.c src/audio.c src/instr.c src/edit.c src/text.c src/font.c src/notes.c
 HDRS = src/orca.h src/audio.h src/instr.h src/edit.h src/text.h src/vram.h src/demo.h
@@ -12,12 +27,17 @@ CART = -Wm-yt0x1B -Wm-ya1 -Wm-yo4 -Wm-yn"ORCA DMG"
 
 all: build/$(NAME).gb
 
-build/$(NAME).gb: $(OBJ)
-	$(LCC) $(CART) -Wl-m -o $@ $(OBJ)
-	@$(GBDK)/bin/romusage $(@:.gb=.map) -g | head -4
+# An order-only prerequisite (after the |): the directory is created once, when
+# it is missing, and never counts as out of date afterwards.  Plain mkdir, so
+# cmd.exe understands it too.
+build:
+	mkdir build
 
-build/%.o: src/%.c $(HDRS)
-	@mkdir -p build
+build/$(NAME).gb: $(OBJ) | build
+	$(LCC) $(CART) -Wl-m -o $@ $(OBJ)
+	@$(GBDK)/bin/romusage $(@:.gb=.map) -g
+
+build/%.o: src/%.c $(HDRS) | build
 	$(LCC) -c -o $@ $<
 
 # Two layers: the VM core is plain C and is proven on the host, where a
@@ -29,9 +49,8 @@ test: build/host_test build/$(NAME).gb
 	$(PY) tools/vblank_test.py
 	$(PY) tools/header_test.py
 
-build/host_test: test/host_test.c src/orca.c $(HDRS)
-	@mkdir -p build
-	cc -O1 -Wall -Wextra -std=c99 -o $@ test/host_test.c src/orca.c
+build/host_test: test/host_test.c src/orca.c $(HDRS) | build
+	$(HOSTCC) -O1 -Wall -Wextra -std=c99 -o $@ test/host_test.c src/orca.c
 
 shots: build/$(NAME).gb
 	$(PY) tools/shots.py
@@ -39,7 +58,7 @@ shots: build/$(NAME).gb
 # Runs every pattern in patches/ inside the ROM and reports what it costs:
 # whether the sequencer keeps its clock, and where the time goes.
 loadtest: build/$(NAME).gb
-	python3 tools/mkpatches.py
+	$(PYGEN) tools/mkpatches.py
 	$(PY) tools/loadtest.py
 
 # Times orca_run() on real hardware timing: with an empty grid (pure scan
@@ -51,10 +70,10 @@ bench: build/orca.o
 
 # Regenerates the font tiles and the Game Boy pitch tables.
 gen:
-	python3 tools/makefont.py src/font.c
-	python3 tools/makenotes.py src/notes.c
+	$(PYGEN) tools/makefont.py src/font.c
+	$(PYGEN) tools/makenotes.py src/notes.c
 
 clean:
-	rm -rf build
+	$(RMBUILD)
 
 .PHONY: all test shots bench loadtest gen clean
