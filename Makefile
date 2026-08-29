@@ -25,7 +25,11 @@ HDRS = src/orca.h src/audio.h src/instr.h src/edit.h src/text.h src/vram.h src/d
 OBJ  = $(SRC:src/%.c=build/%.o)
 
 # 0x1B = MBC5 + RAM + battery, so patches survive a power cycle.
-CART = -Wm-yt0x1B -Wm-ya1 -Wm-yo4 -Wm-yn"ORCA DMG"
+# No space in the cartridge title, and so no quotes: sh and cmd.exe disagree
+# about quoting, and there is no form that survives both -- under cmd.exe
+# -Wm-yn"ORCA DMG" split in two and the linker went looking for a file
+# called DMG.
+CART = -Wm-yt0x1B -Wm-ya1 -Wm-yo4 -Wm-ynORCA-DMG
 
 all: build/$(NAME).gb
 

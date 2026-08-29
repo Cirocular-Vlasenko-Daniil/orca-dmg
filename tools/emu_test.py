@@ -69,7 +69,7 @@ pb.set_emulation_speed(0)
 
 # --- boots and paints ------------------------------------------------------
 pb.tick(120, False)   # gbdk's crt0 alone costs ~66 frames before main()
-check("cartridge title", pb.cartridge_title, "ORCA DMG")
+check("cartridge title", pb.cartridge_title, "ORCA-DMG")
 check("comment row rendered", bg_row(pb, 8, 0, 14), "#.A.ORCA.DMG.#")
 check("clock row rendered", bg_row(pb, 4, 0, 4), ".1C4")
 check("status line", win_row(pb, 0)[:7], "BPM120 ")
