@@ -51,11 +51,11 @@ def at(addr, kind, name):
 
 
 at(ROM_SYM["_orca_run"], "open", "vm")
-at(ROM_SYM["_snd_disp"], "close", "vm")
-at(MAIN["_paint_grid"], "open", "paint")
-at(MAIN["_update_view"], "close", "paint")
+at(MAIN["_paint_grid"], "close", "vm")
+at(MAIN["_update_view"], "open", "paint")
+at(MAIN["_vq_flush"], "close", "paint")
 at(MAIN["_vq_flush"], "open", "drain")
-at(ROM_SYM["_snd_fram"], "close", "drain")
+at(MAIN["_handle_input"], "close", "drain")
 
 for addr, acts in pairs.items():
     def cb(_c, acts=acts):

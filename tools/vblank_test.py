@@ -60,7 +60,11 @@ def on_done(_):
 rom_syms = dict((s, int(a, 16)) for a, s in
                 re.findall(r"([0-9A-F]{8})\s+(_\w+)", open("build/orca-dmg.map").read()))
 pb.hook_register(0, main_symbol("_vq_flush"), on_flush, None)
-pb.hook_register(0, rom_syms["_snd_fram"], on_done, None)  # the next call in the loop
+# snd_frame() is the very next call after the drain, and it now lives in bank
+# 1 -- closing on anything later would count work that legitimately runs
+# outside vblank.  sdld packs the bank into the top half of the map address.
+_a = rom_syms["_snd_fram"]
+pb.hook_register(_a >> 16, _a & 0xFFFF, on_done, None)
 
 
 def press(b, hold=4, after=6):
