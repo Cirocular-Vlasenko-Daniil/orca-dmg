@@ -789,6 +789,8 @@ static void handle_input(void) {
 /* ----------------------------------------------------------------- main -- */
 
 void main(void) {
+  u8 elapsed;
+
   orca_init();
   load_demo();
   orca_run_marks(); /* ports visible before the first tick */
@@ -805,7 +807,18 @@ void main(void) {
   while (1) {
     vsync();
     vq_flush(); /* first thing in vblank, while vram is ours */
-    snd_frame();
+
+    /* How many frames really went past.  One loop iteration is not one frame
+     * once a pattern gets heavy, and both the clock and the modulation have
+     * to be told that. */
+    {
+      u16 now = sys_time;
+      elapsed = (u8)(now - last_time);
+      last_time = now;
+      if (elapsed > 8)
+        elapsed = 8;
+    }
+    snd_frame(elapsed);
 
     handle_input();
 
@@ -813,11 +826,6 @@ void main(void) {
      * pattern can push orca_run() past a single frame, and counting
      * iterations would quietly drag the tempo down with it. */
     {
-      u16 now = sys_time;
-      u8 elapsed = (u8)(now - last_time);
-      last_time = now;
-      if (elapsed > 8)
-        elapsed = 8;
       if (playing) {
         u8 budget = 2; /* never chase more than two ticks in one pass */
         tick_acc += (u16)bpm * 4u * elapsed; /* four ticks to the beat */

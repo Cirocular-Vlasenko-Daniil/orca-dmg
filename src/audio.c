@@ -11,6 +11,8 @@
  * fly is what makes that rule independent of where the ':' glyphs happen to
  * sit on the grid.
  */
+#pragma bank 1
+
 #include <gb/gb.h>
 #include <gb/hardware.h>
 #include "audio.h"
@@ -72,7 +74,7 @@ static const i8 vib_tab[16] = {0, 3, 6, 8, 8, 6, 3, 0, 0, -3, -6, -8, -8, -6, -3
 
 /* ------------------------------------------------------------- defaults -- */
 
-void snd_defaults(void) {
+void snd_defaults(void) BANKED {
   u8 i;
   Instrument *p;
   for (i = 0; i < INSTR_COUNT; i++) {
@@ -117,7 +119,7 @@ static void chan_off(u8 c) {
   voice[c].active = 0;
 }
 
-void snd_all_off(void) {
+void snd_all_off(void) BANKED {
   u8 c;
   for (c = 0; c < 4; c++) {
     voice[c].gate = 0;
@@ -142,11 +144,11 @@ static void set_pan(u8 ch, u8 pan) {
   NR51_REG = nr51_shadow;
 }
 
-void snd_set_tempo(u8 frames_per_tick) {
+void snd_set_tempo(u8 frames_per_tick) BANKED {
   tick_frames = frames_per_tick ? frames_per_tick : 1;
 }
 
-void snd_init(void) {
+void snd_init(void) BANKED {
   NR52_REG = 0x80; /* APU on */
   nr51_shadow = 0xFF;
   NR51_REG = 0xFF; /* every channel to both outputs until a note says otherwise */
@@ -287,7 +289,7 @@ static void trigger(u8 ch, u8 inst, u8 note, u8 vel) {
 
 /* ------------------------------------------------------------- requests -- */
 
-void snd_request(u8 inst, u8 note, u8 vel, u8 len) {
+void snd_request(u8 inst, u8 note, u8 vel, u8 len) BANKED {
   const Instrument *p;
   u8 ch;
   i16 n;
@@ -314,7 +316,7 @@ void snd_request(u8 inst, u8 note, u8 vel, u8 len) {
   pending[ch].len = len ? len : p->len;
 }
 
-void snd_dispatch(void) {
+void snd_dispatch(void) BANKED {
   u8 ch;
   for (ch = 0; ch < 4; ch++) {
     if (!pending[ch].used)
@@ -327,7 +329,7 @@ void snd_dispatch(void) {
   }
 }
 
-void snd_audition(u8 inst) {
+void snd_audition(u8 inst) BANKED {
   const Instrument *p;
   u16 frames;
   u8 ch;
@@ -350,33 +352,38 @@ void snd_audition(u8 inst) {
   trigger(ch, inst, 60, 15); /* middle C */
 }
 
-void snd_age(void) {
+void snd_age(void) BANKED {
   u8 c;
   for (c = 0; c < 4; c++)
     if (voice[c].gate && --voice[c].gate == 0)
       chan_off(c);
 }
 
-void snd_frame(void) {
+void snd_frame(u8 frames) BANKED {
   const Instrument *p;
   u8 c;
   i16 off;
 
-  if (aud_timer && --aud_timer == 0)
-    chan_off(aud_ch);
+  if (frames == 0)
+    return;
+  if (aud_timer) {
+    aud_timer = (u8)(aud_timer > frames ? aud_timer - frames : 0);
+    if (aud_timer == 0)
+      chan_off(aud_ch);
+  }
 
   /* Noise shape: glide back to the note's own value and stop there, so the
    * note still decides what the tail of the sound is. */
   if (voice[3].active && noise_shift != noise_base) {
-    noise_acc++;
-    if (noise_acc >= NOISE_SWEEP_FRAMES) {
-      noise_acc = 0;
+    noise_acc = (u8)(noise_acc + frames);
+    while (noise_acc >= NOISE_SWEEP_FRAMES && noise_shift != noise_base) {
+      noise_acc -= NOISE_SWEEP_FRAMES;
       if (noise_shift < noise_base)
         noise_shift++;
       else
         noise_shift--;
-      NR43_REG = (u8)((noise_shift << 4) | noise_low);
     }
+    NR43_REG = (u8)((noise_shift << 4) | noise_low);
   }
 
   for (c = 0; c < 3; c++) { /* noise has no period to bend */
@@ -389,14 +396,19 @@ void snd_frame(void) {
     off = 0;
 
     if (voice[c].slide) {
-      voice[c].slide--;
       /* Land exactly on the note rather than wherever the division left us. */
-      voice[c].period = voice[c].slide ? (u16)((i16)voice[c].period + voice[c].step)
-                                       : voice[c].target;
+      if (voice[c].slide > frames) {
+        voice[c].slide = (u8)(voice[c].slide - frames);
+        voice[c].period =
+            (u16)((i16)voice[c].period + (i16)(voice[c].step * (i16)frames));
+      } else {
+        voice[c].slide = 0;
+        voice[c].period = voice[c].target;
+      }
       moved = 1;
     }
     if (p->vibdep) {
-      voice[c].phase = (u8)(voice[c].phase + p->vibspd);
+      voice[c].phase = (u8)(voice[c].phase + (u8)(p->vibspd * frames));
       off = ((i16)vib_tab[(voice[c].phase >> 4) & 15] * (i16)p->vibdep) >> 3;
       moved = 1;
     }

@@ -1,5 +1,6 @@
 #ifndef AUDIO_H
 #define AUDIO_H
+#include <gb/gb.h>
 #include "orca.h"
 
 #define INSTR_COUNT 36
@@ -34,22 +35,26 @@ typedef struct {
 
 extern Instrument instruments[INSTR_COUNT];
 
-void snd_init(void);
-void snd_defaults(void);
+void snd_init(void) BANKED;
+void snd_defaults(void) BANKED;
 
 /* A note asks for an instrument, not a channel.  Requests are collected for
  * the whole tick and resolved in snd_dispatch().  len is in ticks; 0 takes
  * the instrument's own setting. */
-void snd_request(u8 inst, u8 note, u8 vel, u8 len);
-void snd_dispatch(void);
+void snd_request(u8 inst, u8 note, u8 vel, u8 len) BANKED;
+void snd_dispatch(void) BANKED;
 
-void snd_age(void);      /* one call per ORCA tick: expires finished notes */
+void snd_age(void) BANKED;      /* one call per ORCA tick: expires finished notes */
 
 /* The editor's TEST button has to work with the sequencer stopped, so its
  * note is timed in frames.  Tell the engine how long a tick currently is. */
-void snd_set_tempo(u8 frames_per_tick);
-void snd_frame(void);    /* one call per frame: vibrato */
-void snd_audition(u8 inst);
-void snd_all_off(void);
+void snd_set_tempo(u8 frames_per_tick) BANKED;
+/* Advances the per-frame modulation by however many frames really went
+ * past.  Called once per main-loop iteration, and an iteration can span
+ * several frames under load -- without the count, vibrato and pitch
+ * slides would quietly slow down with the size of the pattern. */
+void snd_frame(u8 frames) BANKED;
+void snd_audition(u8 inst) BANKED;
+void snd_all_off(void) BANKED;
 
 #endif
