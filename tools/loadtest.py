@@ -55,7 +55,9 @@ at(MAIN["_paint_grid"], "close", "vm")
 at(MAIN["_update_view"], "open", "paint")
 at(MAIN["_vq_flush"], "close", "paint")
 at(MAIN["_vq_flush"], "open", "drain")
-at(MAIN["_handle_input"], "close", "drain")
+# snd_frame() is the next call after the drain and lives in bank 1; closing
+# any later counts work that legitimately runs outside vblank.
+at(ROM_SYM["_snd_fram"], "close", "drain")
 
 for addr, acts in pairs.items():
     def cb(_c, acts=acts):
@@ -68,7 +70,7 @@ for addr, acts in pairs.items():
         for kind, n in acts:
             if kind == "open":
                 open_at[n] = now
-    pb.hook_register(0, addr, cb, None)
+    pb.hook_register(addr >> 16, addr & 0xFFFF, cb, None)
 
 
 def press(b, hold=4, after=6):
