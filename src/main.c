@@ -505,6 +505,7 @@ static void sram_load(void) {
   for (i = 0; i < sizeof(instruments); i++)
     ip[i] = SRAM[SAVE_INSTR + i];
   DISABLE_RAM;
+  orca_rescan();
   orca_run_marks();
   redraw_all();
   flash("LOADED");
@@ -515,11 +516,13 @@ static void load_demo(void) {
   for (y = 0; y < GRID_H; y++)
     for (x = 0; x < GRID_W; x++)
       og_grid[(u16)y * GRID_W + x] = (u8)demo_pattern[y][x];
+  orca_rescan(); /* written straight into the grid, so poke() never saw it */
 }
 
 /* ---------------------------------------------------------------- input -- */
 
 static void grid_edited(void) {
+  orca_rescan();
   if (!playing)
     orca_run_marks(); /* the ports would otherwise be a tick out of date */
   paint_full = 1;     /* an edit is rare; just repaint the lot */
@@ -682,6 +685,7 @@ static void handle_input(void) {
     }
     if (pressed & J_B) {
       page = PAGE_GRID;
+      orca_rescan();
       grid_repaint = 1;
     }
     if (pressed & J_START) {

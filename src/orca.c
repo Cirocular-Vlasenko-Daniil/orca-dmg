@@ -30,6 +30,18 @@ static void touch(u16 o) {
  * allowed to change. */
 static u8 dry_run;
 
+/* One bit per row: set means "this row may hold something".  Conservative by
+ * construction -- poke() only ever sets bits, and the scan rebuilds the mask
+ * from what it actually saw, so a row can never be skipped while occupied. */
+u16 og_row_mask = 0xFFFF;
+static u16 row_grew;
+
+static const u16 row_bit[GRID_H] = {
+    0x0001, 0x0002, 0x0004, 0x0008, 0x0010, 0x0020, 0x0040, 0x0080,
+    0x0100, 0x0200, 0x0400, 0x0800, 0x1000, 0x2000, 0x4000, 0x8000};
+
+void orca_rescan(void) { og_row_mask = 0xFFFF; }
+
 /* Cursor of the cell currently being evaluated.  Kept in globals rather than
  * passed around: sdcc puts arguments on a software stack and every extra
  * parameter costs real cycles on a 4 MHz part. */
@@ -73,6 +85,8 @@ static void poke(i16 y, i16 x, u8 g) {
   o = (u16)y * GRID_W + (u16)x;
   if (og_grid[o] != g) {
     og_grid[o] = g;
+    if (g != '.')
+      row_grew |= row_bit[y];
     touch(o);
     orca_cell_changed(o, g);
   }
@@ -106,6 +120,8 @@ void orca_poke_abs(u8 y, u8 x, u8 g) {
   o = (u16)y * GRID_W + x;
   if (og_grid[o] != g) {
     og_grid[o] = g;
+    if (g != '.')
+      og_row_mask |= row_bit[y]; /* an editor write must be seen next tick */
     touch(o);
     orca_cell_changed(o, g);
   }
@@ -555,6 +571,8 @@ void orca_init(void) {
     vars[i] = '.';
   og_tick = 0;
   og_mark_gen = 0;
+  og_row_mask = 0xFFFF;
+  row_grew = 0;
   og_touch_n = 0;
   og_touch_over = 1; /* nothing painted yet */
   dry_run = 0;
@@ -566,21 +584,42 @@ void orca_init(void) {
  * call, and each empty cell then costs a pop/push pair -- which on a 512-cell
  * grid dwarfs the operators themselves.  With no calls in here, the counter
  * and the cursor both stay in registers. */
-static u16 next_cell(u16 start) {
-  u16 i;
-  for (i = start; i < GRID_N; i++)
-    if (og_grid[i] != '.' &&
-        !((og_mark[i] & MK_GEN) == og_mark_gen && (og_mark[i] & OG_MK_LOCK)))
-      break;
-  return i;
+/* Finds the next cell in [i, end) that wants dispatching, stepping over both
+ * empty and already-spoken-for cells inside the loop.  Two reasons it is a
+ * leaf function: with the dispatch inline sdcc spills the counter to the
+ * stack and every empty cell pays a pop/push pair, and returning on locked
+ * cells too would call it once per glyph instead of once per operator --
+ * measured, that was worse than the walking it saved.
+ *
+ * saw_glyph reports whether the row holds anything at all, which is what
+ * decides if it may be skipped next tick; "occupied but entirely locked" must
+ * not clear the bit. */
+static u8 saw_glyph;
+
+static u16 next_cell(u16 i, u16 end) {
+  while (i < end) {
+    if (og_grid[i] != '.') {
+      saw_glyph = 1;
+      if (!((og_mark[i] & MK_GEN) == og_mark_gen && (og_mark[i] & OG_MK_LOCK)))
+        return i;
+    }
+    i++;
+  }
+  return end;
 }
 
 void orca_run(void) {
-  u16 i;
-  u8 g, up;
+  u16 i, end, seen;
+  u8 g, up, y;
 
   og_touch_n = 0;
   og_touch_over = 0;
+
+  /* Cheap insurance: once in a while look at every row regardless.  The mask
+   * is only ever wrong if something wrote to the grid without going through
+   * poke(), and one full scan in sixty-four costs nothing. */
+  if ((og_tick & 63u) == 0)
+    og_row_mask = 0xFFFF;
 
   /* Advance the generation; only on wrap do we pay for a real clear. */
   og_mark_gen = (u8)(og_mark_gen + 8u);
@@ -592,55 +631,77 @@ void orca_run(void) {
   for (i = 0; i < 36; i++)
     vars[i] = '.';
 
-  for (i = next_cell(0); i < GRID_N; i = next_cell((u16)(i + 1))) {
-    g = og_grid[i];
-    cy = (u8)(i >> 5);
-    cx = (u8)i & 31u;
-    cg = g;
-    if (g == '#') {
-      op_comment();
+  seen = 0;
+  row_grew = 0;
+  for (y = 0; y < GRID_H; y++) {
+    if (!(og_row_mask & row_bit[y]))
       continue;
+    i = (u16)y << 5;
+    end = (u16)(i + GRID_W);
+    saw_glyph = 0;
+    while ((i = next_cell(i, end)) < end) {
+      g = og_grid[i];
+      cy = y;
+      cx = (u8)i & 31u;
+      cg = g;
+      if (g == '#') {
+        op_comment();
+        i++;
+        continue;
+      }
+      if (g == '*') {
+        orca_poke_abs(cy, cx, '.');
+        i++;
+        continue;
+      }
+      if (g == ':') {
+        op_midi();
+        i++;
+        continue;
+      }
+      up = (u8)(g & (u8)~0x20u);
+      if (up < 'A' || up > 'Z') {
+        i++;
+        continue;
+      }
+      switch (up) {
+      case 'A': op_add(); break;
+      case 'B': op_subtract(); break;
+      case 'C': op_clock(); break;
+      case 'D': op_delay(); break;
+      case 'E': op_movement(); break;
+      case 'F': op_if(); break;
+      case 'G': op_generator(); break;
+      case 'H': op_halt(); break;
+      case 'I': op_increment(); break;
+      case 'J': op_jump(); break;
+      case 'K': op_konkat(); break;
+      case 'L': op_lesser(); break;
+      case 'M': op_multiply(); break;
+      case 'N': op_movement(); break;
+      case 'O': op_offset(); break;
+      case 'P': op_push(); break;
+      case 'Q': op_query(); break;
+      case 'R': op_random(); break;
+      case 'S': op_movement(); break;
+      case 'T': op_track(); break;
+      case 'U': op_uclid(); break;
+      case 'V': op_variable(); break;
+      case 'W': op_movement(); break;
+      case 'X': op_teleport(); break;
+      case 'Y': op_yump(); break;
+      case 'Z': op_lerp(); break;
+      }
+      i++;
     }
-    if (g == '*') {
-      orca_poke_abs(cy, cx, '.');
-      continue;
-    }
-    if (g == ':') {
-      op_midi();
-      continue;
-    }
-    up = (u8)(g & (u8)~0x20u);
-    if (up < 'A' || up > 'Z')
-      continue;
-    switch (up) {
-    case 'A': op_add(); break;
-    case 'B': op_subtract(); break;
-    case 'C': op_clock(); break;
-    case 'D': op_delay(); break;
-    case 'E': op_movement(); break;
-    case 'F': op_if(); break;
-    case 'G': op_generator(); break;
-    case 'H': op_halt(); break;
-    case 'I': op_increment(); break;
-    case 'J': op_jump(); break;
-    case 'K': op_konkat(); break;
-    case 'L': op_lesser(); break;
-    case 'M': op_multiply(); break;
-    case 'N': op_movement(); break;
-    case 'O': op_offset(); break;
-    case 'P': op_push(); break;
-    case 'Q': op_query(); break;
-    case 'R': op_random(); break;
-    case 'S': op_movement(); break;
-    case 'T': op_track(); break;
-    case 'U': op_uclid(); break;
-    case 'V': op_variable(); break;
-    case 'W': op_movement(); break;
-    case 'X': op_teleport(); break;
-    case 'Y': op_yump(); break;
-    case 'Z': op_lerp(); break;
-    }
+    if (saw_glyph)
+      seen |= row_bit[y];
   }
+
+  /* The scan just walked every occupied row, so it knows exactly which ones
+   * hold anything; rows written during the tick are folded back in. */
+  og_row_mask = (u16)(seen | row_grew);
+
   if (!dry_run)
     og_tick++;
 }

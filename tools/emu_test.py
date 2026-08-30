@@ -283,9 +283,17 @@ def clear_grid():
         pb.memory[GRID + i] = ord(".")
 
 
+ROW_MASK = symbol("_og_row_mask")
+
+
 def poke(y, x, text):
     for i, c in enumerate(text):
         pb.memory[GRID + y * 32 + x + i] = ord(c)
+    # Writing straight into the grid bypasses poke(), which is what maintains
+    # the ROM's "which rows hold anything" mask -- say so, the way a loader
+    # would by calling orca_rescan().
+    pb.memory[ROW_MASK] = 0xFF
+    pb.memory[ROW_MASK + 1] = 0xFF
 
 
 def envelopes_seen(frames=150):
@@ -482,9 +490,9 @@ def slide_periods(pitch, spd=8, frames=40):
     clear_grid()
     pb.memory[ifield(0, F_PITCH)] = pitch & 0xFF
     pb.memory[ifield(0, F_PITCHSPD)] = spd
-    pb.memory[ifield(0, F_LEN)] = 20
-    poke(0, 0, "1Dk")
-    poke(2, 1, ":05Cf0")
+    pb.memory[ifield(0, F_LEN)] = 20   # shorter than the bang period, so the
+    poke(0, 0, "1Dz")                  # channel really does fall silent and
+    poke(2, 1, ":05Cf0")               # the trigger below is a fresh one
     for _ in range(600):
         pb.tick(1, False)
         if pb.memory[0xFF12] == 0:
@@ -496,17 +504,19 @@ def slide_periods(pitch, spd=8, frames=40):
     return [voice0_period() for _ in range(frames) if (pb.tick(1, False) or True)]
 
 
-static = slide_periods(0)
+# spd 4 -> a 24-frame glide: slow enough that sampling cannot start after it
+# has already arrived, whatever the loop is doing that frame.
+static = slide_periods(0, spd=4)
 check("no slide means a static period", len(set(static)), 1)
 rest = static[-1]
 
-falling = slide_periods(-12)             # starts an octave up and drops
+falling = slide_periods(-12, spd=4)      # starts an octave up and drops
 check("a falling slide starts above the note", falling[0] > rest, True)
 check("...arrives exactly on the note", falling[-1], rest)
 check("...and then stays there", len(set(falling[-10:])), 1)
 check("...moving only one way", falling == sorted(falling, reverse=True), True)
 
-rising = slide_periods(12)
+rising = slide_periods(12, spd=4)
 check("a rising slide starts below the note", rising[0] < rest, True)
 check("...and arrives on it too", rising[-1], rest)
 

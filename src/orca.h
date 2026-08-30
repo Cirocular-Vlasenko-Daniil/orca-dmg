@@ -51,6 +51,18 @@ extern u16 og_tick;
 void orca_init(void);
 void orca_run(void);
 
+/* Forces the next tick to look at every row.  The scan keeps a mask of which
+ * rows hold anything and skips the rest -- a sparse pattern spends most of a
+ * tick walking empty cells otherwise.  Anything that changes the grid behind
+ * poke()'s back (loading a pattern, a test writing straight into og_grid) has
+ * to say so here, or its rows stay skipped. */
+void orca_rescan(void);
+
+/* The mask itself, so anything writing straight into og_grid -- a test
+ * harness, a loader -- can announce it without a function call.  Bit r set
+ * means "row r may hold something"; 0xFFFF is always safe. */
+extern u16 og_row_mask;
+
 /* Re-derives the port flags without touching the grid, the clock or the
  * sound.  The editor needs the ports visible while the sequencer is stopped,
  * and they only exist as a side effect of running the operators. */
