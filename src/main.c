@@ -642,10 +642,14 @@ static void handle_input(void) {
 
   if (picker_open) {
     if ((act & J_LEFT) && pick_x) pick_x--;
+    else if ((act & J_LEFT) && pick_x == 0) pick_x = 19;
     if ((act & J_RIGHT) && pick_x < 19) pick_x++;
+    else if ((act & J_RIGHT) && pick_x >= 19) pick_x = 0;
     if ((act & J_UP) && pick_y) pick_y--;
+    else if ((act & J_UP) && pick_y == 0) pick_y = 3;
     if ((act & J_DOWN) && pick_y < 3) pick_y++;
-    if (pressed & J_A) {
+    else if ((act & J_DOWN) && pick_y >= 3) pick_y = 0;
+    if (released & J_A) {
       u8 g = (u8)palette[pick_y * 20u + pick_x];
       if (g != ' ') {
         orca_poke_abs(cur_y, cur_x, g);
