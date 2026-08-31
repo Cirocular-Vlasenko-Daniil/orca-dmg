@@ -20,8 +20,8 @@ EXE     =
 endif
 HOSTCC ?= cc
 
-SRC  = src/main.c src/orca.c src/audio.c src/instr.c src/edit.c src/text.c src/font.c src/notes.c
-HDRS = src/orca.h src/audio.h src/instr.h src/edit.h src/text.h src/vram.h src/demo.h
+SRC  = src/main.c src/orca.c src/audio.c src/instr.c src/edit.c src/text.c src/font.c src/notes.c src/ig_usb_keyboard.c
+HDRS = src/orca.h src/audio.h src/instr.h src/edit.h src/text.h src/vram.h src/demo.h src/ig_usb_keyboard.h
 OBJ  = $(SRC:src/%.c=build/%.o)
 
 # 0x1B = MBC5 + RAM + battery, so patches survive a power cycle.
