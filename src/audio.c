@@ -15,6 +15,8 @@
 #include <gb/hardware.h>
 #include "audio.h"
 
+#define NOTE_BANK 1
+
 extern const unsigned int note_period[128];
 extern const unsigned char note_noise[128];
 extern const unsigned char wave_shapes[128];
@@ -171,6 +173,7 @@ static void load_wave(u8 shape) {
     return;
   cur_wave = shape;
   NR30_REG = 0x00; /* the DAC has to be off while wave RAM is rewritten */
+  SWITCH_ROM(NOTE_BANK);
   for (i = 0; i < 16; i++)
     AUD3WAVE[i] = wave_shapes[(u16)shape * 16u + i];
 }
@@ -178,6 +181,7 @@ static void load_wave(u8 shape) {
 /* CH3 runs an octave below the pulses for the same period value, so the
  * conversion has to happen wherever a note becomes a period. */
 static u16 period_for(u8 ch, u8 note) {
+  SWITCH_ROM(NOTE_BANK);
   u16 p = note_period[note];
   if (ch == 2)
     p = (u16)(2048u - ((2048u - p) >> 1));
@@ -220,6 +224,7 @@ static void trigger(u8 ch, u8 inst, u8 note, u8 vel) {
   if (ch == 3) {
     /* note_noise packs the clock shift in the high nibble and the divisor in
      * the low three bits, leaving bit 3 for the LFSR width. */
+    SWITCH_ROM(NOTE_BANK);
     i16 start;
     noise_base = (u8)(note_noise[note] >> 4);
     noise_low = (u8)((note_noise[note] & 0x07u) | (p->tone ? 0x08u : 0x00u));

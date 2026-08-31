@@ -16,6 +16,7 @@
 #include "text.h"
 #include "vram.h"
 #include "demo.h"
+#include "ig_usb_keyboard.h"
 
 /* The tile set lives in bank 1: 193 tiles no longer fit alongside the code
  * in bank 0, and it is only read once, at init. */
@@ -606,8 +607,51 @@ static void sel_move(u8 act) {
   status_dirty = 1;
 }
 
+
+static void handle_usb_keyboard_input(void) {
+
+    bool edited = false;
+
+    // if (usb_keyboard_has_data()) {
+    while (usb_keyboard_has_data()) {
+
+        uint8_t key = usb_keyboard_get_key();
+
+        if (((key >= 'a') && (key <= 'z')) || ((key >= 'A') && (key <= 'Z'))) {
+            orca_poke_abs(cur_y, cur_x, key);
+            edited = true;
+        }
+        else if ((key >= KEY_1) && (key <= KEY_9)) {
+            orca_poke_abs(cur_y, cur_x, key - (KEY_1 - '1'));
+            edited = true;
+        }
+        else if (key == KEY_0)     { orca_poke_abs(cur_y, cur_x, '0'); edited = true; }
+        else if (key == KEY_AMP)   { orca_poke_abs(cur_y, cur_x, '*'); edited = true; }
+        else if (key == KEY_POUND) { orca_poke_abs(cur_y, cur_x, '#'); edited = true; }
+        else if (key == KEY_DEL)   { orca_poke_abs(cur_y, cur_x, '.'); edited = true; }
+
+        else if (key == KEY_PGUP)  { edit_copy(cur_x, cur_y); flash("COPIED"); }
+        else if (key == KEY_PGDN)  { if (edit_paste(cur_x, cur_y)) { grid_edited(); flash("PASTED"); }
+                                     else { flash("CLIPBOARD EMPTY"); }
+                                   }
+        else if (key == KEY_SPACE) { playing = playing ? 0 : 1; if (!playing) snd_all_off(); }
+
+        else if ((key == KEY_LEFT) && cur_x)               { cur_x--; status_dirty = 1; }
+        else if ((key == KEY_RIGHT) && cur_x < GRID_W - 1) { cur_x++; status_dirty = 1; }
+        else if ((key == KEY_UP) && cur_y)                 { cur_y--; status_dirty = 1; }
+        else if ((key == KEY_DOWN) && cur_y < GRID_H - 1)  { cur_y++; status_dirty = 1; }
+
+        if (edited) grid_edited();
+
+        key = usb_keyboard_get_key();
+    }
+}
+
+
 static void handle_input(void) {
   u8 keys, pressed, released, dp, dnew, act, hold;
+
+  handle_usb_keyboard_input();
 
   disable_interrupts();
   keys = k_cur;
@@ -801,6 +845,7 @@ void main(void) {
   set_bpm(bpm);
   last_time = sys_time;
   add_VBL(vbl_handler);
+  usb_keyboard_install();
 
   while (1) {
     vsync();
