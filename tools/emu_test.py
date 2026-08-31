@@ -143,34 +143,73 @@ for _ in range(3):
 pb.tick(4, False)
 check("cursor position readout", win_row(pb, 0)[13:16], "@3c")
 
-press(pb, "a")                       # open picker
-pb.tick(6, False)
+# The palette is held open: A opens it, the release commits whatever is under
+# the selection, so the whole gesture is one press.
+pb.button_press("a")
+pb.tick(8, False)
 check("picker palette row 0", win_row(pb, 2), "0123456789ABCDEFGHIJ")
 check("picker palette row 3", win_row(pb, 5)[:6], "uvwxyz")
 # The picker opens on whatever glyph the cursor is already sitting on -- an
 # empty cell, so on '.' at row 1 col 16.  One row up from there is 'G'.
 check("picker preselects current glyph", (pb.memory[0xFF4A], win_row(pb, 3)[16]), (96, "."))
 press(pb, "up")
-press(pb, "a")                       # commit 'G'
-pb.tick(6, False)
+pb.button_release("a")               # releasing is what commits
+pb.tick(10, False)
 check("picker inserted glyph", bg(pb, 3, 12), "G")
 
 press(pb, "b")                       # erase it again
 pb.tick(6, False)
 check("b erases", bg(pb, 3, 12), ".")
 
+# --- the palette cursor wraps at the edges --------------------------------
+# Sprite 1 is the palette cursor: OAM holds y as 128 + row*8 and x as col*8+8.
+def pick_col():
+    return (pb.memory[0xFE05] - 8) // 8
+
+
+def pick_row():
+    return (pb.memory[0xFE04] - 128) // 8
+
+
+pb.button_press("a")
+pb.tick(10, False)
+check("palette opens on the glyph under the cursor", (pick_col(), pick_row()), (16, 1))
+press(pb, "up")
+pb.tick(4, False)
+check("...steps up a row", pick_row(), 0)
+press(pb, "up")
+pb.tick(4, False)
+check("...and wraps from the first row to the last", pick_row(), 3)
+for _ in range(40):                   # walk to the edge by result, not by count
+    if pick_col() == 0:
+        break
+    press(pb, "left")
+pb.tick(6, False)
+check("...reaches the first column", pick_col(), 0)
+press(pb, "left")
+pb.tick(4, False)
+check("...and wraps to the last", pick_col(), 19)
+press(pb, "right")
+pb.tick(4, False)
+check("...and back again the other way", pick_col(), 0)
+press(pb, "b")                       # cancel, so nothing is inserted
+pb.button_release("a")
+pb.tick(10, False)
+check("cancelling leaves the cell alone", bg(pb, 3, 12), ".")
+
 # --- the picker must not hide the cell being edited ---------------------
 for _ in range(3):
     press(pb, "down")            # cursor to row 15
 pb.tick(4, False)
 check("cursor at last row", win_row(pb, 0)[13:16], "@3f")
-press(pb, "a")
-pb.tick(8, False)
+pb.button_press("a")
+pb.tick(10, False)
 check("grid scrolls out from under the picker", pb.memory[0xFF42], 32)
 cursor_y = pb.memory[0xFE00]     # OAM entry 0: y + 16
 check("cursor sprite stays above the palette", cursor_y - 16 < 96, True)
-press(pb, "b")
-pb.tick(8, False)
+press(pb, "b")                       # B cancels without inserting
+pb.button_release("a")
+pb.tick(10, False)
 check("closing the picker restores scroll", pb.memory[0xFF42], 0)
 
 # --- bpm ------------------------------------------------------------------
@@ -183,12 +222,16 @@ check("select+up raises bpm", win_row(pb, 0)[:6], "BPM130")
 
 # Worst case: at the top of the range a tick period is only ~3.6 frames,
 # barely more than the tick itself costs.
-pb.button_press("select")
-pb.tick(2, False)
-for _ in range(12):
+# Press until it reads 250 rather than counting presses: one dropped press
+# under load would otherwise fail a test that is not about input at all.
+for _ in range(30):
+    if win_row(pb, 0)[:6] == "BPM250":
+        break
+    pb.button_press("select")
+    pb.tick(2, False)
     press(pb, "up")
-pb.button_release("select")
-pb.tick(4, False)
+    pb.button_release("select")
+    pb.tick(6, False)
 check("bpm reaches the top of the range", win_row(pb, 0)[:6], "BPM250")
 start_tick, start_frame = tickno(pb), pb.frame_count
 while tickno(pb) - start_tick < 48:
